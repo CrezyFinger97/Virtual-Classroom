@@ -1,15 +1,35 @@
 "use client"
 
 import type React from "react"
+import { useEffect, useState } from "react"
+import { supabase } from "@/lib/supabase/supabaseClient"
 
-import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Menu, X, LogOut, Users, BookOpen, Calendar, BarChart3, FileText, Video, Clock, Home } from "lucide-react"
+import {
+  Menu,
+  X,
+  LogOut,
+  Users,
+  BookOpen,
+  Calendar,
+  BarChart3,
+  FileText,
+  Video,
+  Clock,
+  Home,
+} from "lucide-react"
 
-// Types
+
+// ✅ All type definitions and mock data stay here:
 type Subject = "Maths" | "APP" | "COA" | "DSA"
 
 type User = {
@@ -24,23 +44,23 @@ type Student = {
   id: string
   name: string
   email: string
-  marks: Record<Subject, number>
-  attendance: Record<Subject, { total: number; attended: number }>
+  marks: Record<Subject, number> | null
+  attendance: Record<Subject, { total: number; attended: number }> | null
 }
 
 type Assignment = {
   id: string
   title: string
   subject: Subject
-  dueDate: string
-  attachmentName?: string
+  due_date: string
+  attachment_name?: string
 }
 
 type Resource = {
   id: string
   title: string
   subject: Subject
-  fileName?: string
+  file_name?: string
 }
 
 type MeetLink = {
@@ -52,49 +72,164 @@ type MeetLink = {
   status: "live" | "upcoming" | "scheduled"
 }
 
-type TimetableDay = {
-  day: string
-  slots: Array<{
-    time: string
-    subject: Subject
-    teacher: string
-    room: string
-  }>
-}
-
 type TimetableSlot = {
   id: string
   day: string
   time: string
   subject: Subject
-  room: string
+  teacher?: string
+  room?: string
 }
 
-// Mock data
-const mockUsers: User[] = [
-  {
-    id: "t1",
-    email: "shouryagupta180@gmail.com",
-    password: "123456",
-    role: "teacher",
-    name: "Shourya Gupta",
-  },
-]
 
-const mockStudents: Student[] = [
-  {
-    id: "s1",
-    name: "Alice Smith",
-    email: "alice@gmail.com",
-    marks: { Maths: 85, APP: 92, COA: 78, DSA: 88 },
-    attendance: {
-      Maths: { attended: 40, total: 45 },
-      APP: { attended: 38, total: 40 },
-      COA: { attended: 30, total: 38 },
-      DSA: { attended: 42, total: 42 },
-    },
-  },
-]
+// ✅ From here on, everything must be **inside the com**
+export default function VirtualClassroomApp() {
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [role, setRole] = useState<"student" | "teacher" | null>(null)
+  const [currentUser, setCurrentUser] = useState<User | null>(null)
+  // 🧭 track which page user is viewing
+  const [currentPage, setCurrentPage] = useState("dashboard")
+  const [meetLinks, setMeetLinks] = useState<MeetLink[]>([])
+  const [assignmentForm, setAssignmentForm] = useState({
+    title: "",
+    subject: "",
+    dueDate: "",
+    attachmentName: "",
+  })
+  const [resourceForm, setResourceForm] = useState({
+    title: "",
+    subject: "",
+    fileName: "",
+  })
+
+
+  
+  const [users, setUsers] = useState<User[]>([])
+
+  const [signupRole, setSignupRole] = useState<"student" | "teacher" | null>(null)
+  const [signupForm, setSignupForm] = useState({
+    name: "",
+    email: "",
+    password: "",
+    confirmPassword: "",
+  })
+  const [loginEmail, setLoginEmail] = useState("")
+  const [loginPassword, setLoginPassword] = useState("")
+
+  const handleLogin = async () => {
+  setLoginError(null)
+  console.log("Attempting login with:", loginEmail.trim(), loginPassword.trim())
+
+  const { data, error } = await supabase
+    .from("users")
+    .select("*")
+    .ilike("email", loginEmail.trim())
+    .eq("password", loginPassword.trim())
+    .maybeSingle()
+
+  if (error || !data) {
+    console.error("Login error:", error)
+    setLoginError("Invalid email or password.")
+    return
+  }
+
+  setRole(data.role)
+  setCurrentUser(data)
+  setIsLoggedIn(true)
+  console.log("✅ Logged in as:", data.role)
+  }
+  const [signupError, setSignupError] = useState<string | null>(null)
+
+
+  const [isSigningUp, setIsSigningUp] = useState(false)
+
+  const [students, setStudents] = useState<Student[]>([])
+  const [assignments, setAssignments] = useState<Assignment[]>([])
+  const [resources, setResources] = useState<Resource[]>([])
+  const [meets, setMeets] = useState<MeetLink[]>([])
+  const [timetable, setTimetable] = useState<TimetableSlot[]>([])
+
+  const [loadingStudents, setLoadingStudents] = useState(true)
+  const [loadingAssignments, setLoadingAssignments] = useState(true)
+  const [loadingResources, setLoadingResources] = useState(true)
+  const [loadingMeets, setLoadingMeets] = useState(true)
+  const [loadingTimetable, setLoadingTimetable] = useState(true)
+
+// Fetch all tables
+useEffect(() => {
+  const fetchAll = async () => {
+    try {
+      setLoadingStudents(true);
+      setLoadingAssignments(true);
+      setLoadingResources(true);
+      setLoadingMeets(true);
+      setLoadingTimetable(true);
+
+      // 🧩 Parallel fetching for all tables
+      const [
+        { data: sData, error: sError },
+        { data: aData, error: aError },
+        { data: rData, error: rError },
+        { data: mData, error: mError },
+        { data: tData, error: tError },
+      ] = await Promise.all([
+        supabase.from("students").select("*"),
+        supabase.from("assignments").select("*"),
+        supabase.from("resources").select("*"),
+        supabase.from("meets").select("*"),
+        supabase.from("timetable").select("*"),
+      ]);
+
+      // ✅ Students
+      if (sError) console.error("❌ Error fetching students:", sError);
+      else {
+        console.log("✅ Students fetched:", sData);
+        setStudents(sData || []);
+      }
+      setLoadingStudents(false);
+
+      // ✅ Assignments
+      if (aError) console.error("❌ Error fetching assignments:", aError);
+      else setAssignments(aData || []);
+      setLoadingAssignments(false);
+
+      // ✅ Resources
+      if (rError) console.error("❌ Error fetching resources:", rError);
+      else setResources(rData || []);
+      setLoadingResources(false);
+
+      // ✅ Meets
+      if (mError) console.error("❌ Error fetching meets:", mError);
+      else setMeets(mData || []);
+      setLoadingMeets(false);
+
+      // ✅ Timetable
+      if (tError) console.error("❌ Error fetching timetable:", tError);
+      else setTimetable(tData || []);
+      setLoadingTimetable(false);
+
+    } catch (err) {
+      console.error("⚠️ Unexpected fetch error:", err);
+      setLoadingStudents(false);
+      setLoadingAssignments(false);
+      setLoadingResources(false);
+      setLoadingMeets(false);
+      setLoadingTimetable(false);
+    }
+  };
+
+  fetchAll();
+}, []);
+
+
+
+
+
+
+
+
+
+
 
 const initialAssignments: Assignment[] = []
 const initialResources: Resource[] = []
@@ -134,32 +269,8 @@ const initialTimetable: TimetableDay[] = [
       { time: "9:00 - 10:00", subject: "Maths", teacher: "Dr. Rao", room: "A-101" },
       { time: "10:15 - 11:15", subject: "APP", teacher: "Prof. Kumar", room: "B-202" },
     ],
-  },
+  }
 ]
-
-export default function VirtualClassroomApp() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false)
-  const [role, setRole] = useState<"student" | "teacher" | null>(null)
-  const [currentUser, setCurrentUser] = useState<User | null>(null)
-  const [currentPage, setCurrentPage] = useState<string>("dashboard")
-  const [selectedStudent, setSelectedStudent] = useState<Student | null>(null)
-
-  const [isSigningUp, setIsSigningUp] = useState(false)
-  const [signupRole, setSignupRole] = useState<"teacher" | "student" | null>(null)
-  const [signupForm, setSignupForm] = useState({ name: "", email: "", password: "", confirmPassword: "" })
-  const [signupError, setSignupError] = useState<string | null>(null)
-
-  const [assignmentForm, setAssignmentForm] = useState({ title: "", subject: "Maths" as Subject, dueDate: "" })
-  const [resourceForm, setResourceForm] = useState({ title: "", subject: "Maths" as Subject })
-  const [meetForm, setMeetForm] = useState({ subject: "Maths" as Subject, link: "" })
-
-  // App data
-  const [users, setUsers] = useState<User[]>(mockUsers)
-  const [students, setStudents] = useState<Student[]>(mockStudents)
-  const [assignments, setAssignments] = useState<Assignment[]>(initialAssignments)
-  const [resources, setResources] = useState<Resource[]>(initialResources)
-  const [meetLinks, setMeetLinks] = useState<MeetLink[]>(initialMeetLinks)
-  const [timetable, setTimetable] = useState<TimetableDay[]>(initialTimetable)
 
   // Timetable slots
   const [timetableSlots, setTimetableSlots] = useState<TimetableSlot[]>([
@@ -204,62 +315,80 @@ export default function VirtualClassroomApp() {
 
   const canSignup =
     signupRole &&
-    /@gmail\.com$/i.test(signupForm.email.trim()) &&
+    signupForm.email.trim().length > 0 &&
     signupForm.password.trim().length >= 6 &&
     signupForm.password === signupForm.confirmPassword &&
     signupForm.name.trim().length > 0
 
-  const handleLogin = () => {
-    if (!canLogin) {
-      setLoginError("Please use a Gmail address with at least 6 character password.")
-      return
-    }
+    
+  console.log("Attempting login with:", email.trim(), password.trim())
+// ✅ SIGNUP FUNCTION
+const handleSignup = async () => {
+  console.log("Signup Debug →", {
+    signupForm,
+    signupRole,
+    canSignup,
+    emailValid: /@gmail\.com$/i.test(signupForm.email.trim()),
+    passwordMatch: signupForm.password === signupForm.confirmPassword,
+  });
 
-    const user = users.find((u) => u.email === email.trim() && u.password === password.trim())
-
-    if (!user) {
-      setLoginError("Invalid email or password.")
-      return
-    }
-
-    setLoginError(null)
-    setCurrentUser(user)
-    setRole(user.role)
-    setIsLoggedIn(true)
-    setCurrentPage("dashboard")
-    setEmail("")
-    setPassword("")
+  if (!canSignup) {
+    setSignupError("Please fill all fields correctly. Passwords must match.");
+    return;
   }
 
-  const handleSignup = () => {
-    if (!canSignup) {
-      setSignupError("Please fill all fields correctly. Passwords must match.")
-      return
+  try {
+    // ✅ 1. Check if email already exists in 'users'
+    const { data: existingUsers, error: existingError } = await supabase
+      .from("users")
+      .select("email")
+      .eq("email", signupForm.email.trim());
+
+    if (existingError) {
+      console.error("❌ Error checking existing user:", existingError);
+      setSignupError("Something went wrong. Please try again.");
+      return;
     }
 
-    // Check if email already exists
-    if (users.some((u) => u.email === signupForm.email.trim())) {
-      setSignupError("This email is already registered")
-      return
+    if (existingUsers && existingUsers.length > 0) {
+      setSignupError("This email is already registered.");
+      return;
     }
 
-    // Create new user
-    const newUser: User = {
-      id: `${signupRole === "teacher" ? "t" : "s"}${Date.now()}`,
-      email: signupForm.email.trim(),
-      password: signupForm.password.trim(),
-      role: signupRole,
-      name: signupForm.name.trim(),
+    // ✅ 2. Insert user into 'users'
+    const { data: insertedUser, error: userError } = await supabase
+      .from("users")
+      .insert([
+        {
+          name: signupForm.name.trim(),
+          email: signupForm.email.trim(),
+          password: signupForm.password.trim(),
+          role: signupRole,
+          created_at: new Date().toISOString(),
+        },
+      ])
+      .select()
+      .single();
+
+    if (userError || !insertedUser) {
+      console.error("❌ Error inserting user:", userError);
+      setSignupError("Failed to create user.");
+      return;
     }
 
-    setUsers([...users, newUser])
+    console.log("✅ User inserted into 'users':", insertedUser);
 
-    // If student, also add to students table
+    // ✅ 3. Always add to 'students' if role === 'student'
     if (signupRole === "student") {
-      const newStudent: Student = {
-        id: newUser.id,
-        name: signupForm.name.trim(),
-        email: signupForm.email.trim(),
+  console.log("🟡 Attempting to insert student record for:", insertedUser);
+
+  const { data: studentData, error: studentError } = await supabase
+    .from("students")
+    .insert([
+      {
+        user_id: insertedUser.id,
+        name: insertedUser.name,
+        email: insertedUser.email,
         marks: { Maths: 0, APP: 0, COA: 0, DSA: 0 },
         attendance: {
           Maths: { attended: 0, total: 0 },
@@ -267,16 +396,35 @@ export default function VirtualClassroomApp() {
           COA: { attended: 0, total: 0 },
           DSA: { attended: 0, total: 0 },
         },
-      }
-      setStudents([...students, newStudent])
-    }
+        created_at: new Date().toISOString(),
+      },
+    ])
+    .select();
 
-    setSignupError(null)
-    setIsSigningUp(false)
-    setSignupRole(null)
-    setSignupForm({ name: "", email: "", password: "", confirmPassword: "" })
-    alert(`Account created successfully! Please login.`)
+  console.log("🧾 Student insert result:", { studentData, studentError });
+
+  if (studentError) {
+    console.error("❌ Error inserting into 'students':", studentError.message);
+  } else {
+    console.log("✅ Student successfully inserted:", studentData);
   }
+}
+
+
+    alert("✅ Account created successfully! Please login.");
+    setSignupForm({ name: "", email: "", password: "", confirmPassword: "" });
+    setSignupRole(null);
+    setIsSigningUp(false);
+  } catch (err) {
+    console.error("⚠️ Unexpected signup error:", err);
+    setSignupError("Something went wrong during signup.");
+  }
+};
+
+
+
+
+
 
   const handleLogout = () => {
     setIsLoggedIn(false)
@@ -470,6 +618,8 @@ export default function VirtualClassroomApp() {
     Array<{ id: string; title: string; subject: Subject; fileName: string; dueDate: string; uploadedAt: string }>
   >([])
 
+  
+
   // Render login/signup page
   if (!isLoggedIn) {
     if (isSigningUp) {
@@ -522,12 +672,11 @@ export default function VirtualClassroomApp() {
                   Gmail Address
                 </Label>
                 <Input
-                  id="signup-email"
                   type="email"
-                  placeholder="your@gmail.com"
+                  placeholder="Email"
                   value={signupForm.email}
                   onChange={(e) => setSignupForm({ ...signupForm, email: e.target.value })}
-                  className="bg-slate-700 border-slate-600 text-white placeholder-slate-400"
+                  className="bg-slate-700 text-white border-slate-600"
                 />
               </div>
 
@@ -537,12 +686,11 @@ export default function VirtualClassroomApp() {
                   Password
                 </Label>
                 <Input
-                  id="signup-password"
                   type="password"
-                  placeholder="At least 6 characters"
+                  placeholder="Password"
                   value={signupForm.password}
                   onChange={(e) => setSignupForm({ ...signupForm, password: e.target.value })}
-                  className="bg-slate-700 border-slate-600 text-white placeholder-slate-400"
+                  className="bg-slate-700 text-white border-slate-600"
                 />
               </div>
 
@@ -565,7 +713,6 @@ export default function VirtualClassroomApp() {
 
               <Button
                 onClick={handleSignup}
-                disabled={!canSignup}
                 className="w-full bg-green-600 hover:bg-green-700 text-white"
               >
                 Create Account
@@ -591,61 +738,70 @@ export default function VirtualClassroomApp() {
 
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center p-4">
-        <Card className="w-full max-w-md bg-slate-800 border-slate-700">
-          <CardHeader className="space-y-2">
-            <CardTitle className="text-2xl text-white">Virtual Classroom</CardTitle>
-            <CardDescription className="text-slate-400">Login to your account</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="email" className="text-slate-300">
-                Email
-              </Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="Enter your Gmail"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="bg-slate-700 border-slate-600 text-white placeholder-slate-400"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password" className="text-slate-300">
-                Password
-              </Label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="Enter your password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="bg-slate-700 border-slate-600 text-white placeholder-slate-400"
-              />
-            </div>
-            {loginError && <p className="text-red-400 text-sm">{loginError}</p>}
-            <Button
-              onClick={handleLogin}
-              disabled={!canLogin}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white"
-            >
-              Login
-            </Button>
+        {/* 🔐 LOGIN FORM */}
+<Card className="w-full max-w-md bg-slate-800 border-slate-700">
+  <CardHeader className="space-y-2">
+    <CardTitle className="text-2xl text-white">Welcome Back</CardTitle>
+    <CardDescription className="text-slate-400">
+      Log in to your account
+    </CardDescription>
+  </CardHeader>
 
-            <Button
-              onClick={() => setIsSigningUp(true)}
-              variant="ghost"
-              className="w-full text-slate-300 hover:text-white"
-            >
-              Don't have an account? Sign up
-            </Button>
+  <CardContent className="space-y-4">
+    {/* Email Input */}
+    <div className="space-y-2">
+      <Label className="text-slate-300">Email</Label>
+      <Input
+        type="email"
+        placeholder="Email"
+        value={loginEmail}
+        onChange={(e) => {
+          console.log("Email typed:", e.target.value) // ✅ debug
+          setLoginEmail(e.target.value)
+        }}
+        className="bg-slate-700 text-white border-slate-600"
+      />
+    </div>
 
-            <div className="text-center text-sm text-slate-400">
-              <p>Demo Teacher: shouryagupta180@gmail.com / 123456</p>
-              <p>Demo Student: alice@gmail.com / pass123</p>
-            </div>
-          </CardContent>
-        </Card>
+    {/* Password Input */}
+    <div className="space-y-2">
+      <Label className="text-slate-300">Password</Label>
+      <Input
+        type="password"
+        placeholder="Password"
+        value={loginPassword}
+        onChange={(e) => {
+          console.log("Password typed:", e.target.value) // ✅ debug
+          setLoginPassword(e.target.value)
+        }}
+        className="bg-slate-700 text-white border-slate-600"
+      />
+    </div>
+
+    {/* Error Text */}
+    {loginError && (
+      <p className="text-red-400 text-sm">{loginError}</p>
+    )}
+
+    {/* Login Button */}
+    <Button onClick={handleLogin} className="w-full bg-blue-600 hover:bg-blue-700 text-white">
+      Login
+    </Button>
+
+
+    {/* Signup Redirect */}
+    <p className="text-slate-400 text-sm text-center">
+      Don’t have an account?{" "}
+      <span
+        onClick={() => setIsSigningUp(true)}
+        className="text-blue-400 cursor-pointer hover:underline"
+      >
+        Sign up
+      </span>
+    </p>
+  </CardContent>
+</Card>
+
       </div>
     )
   }
@@ -1152,26 +1308,37 @@ export default function VirtualClassroomApp() {
               </Card>
 
               {/* Students List */}
-              <Card className="bg-slate-800 border-slate-700">
-                <CardHeader>
-                  <CardTitle className="text-white">Registered Students ({students.length})</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3 max-h-96 overflow-y-auto">
-                    {students.map((student) => (
-                      <div key={student.id} className="bg-slate-700 p-3 rounded flex justify-between items-center">
-                        <div>
-                          <p className="text-white font-semibold">{student.name}</p>
-                          <p className="text-slate-400 text-sm">{student.email}</p>
-                        </div>
-                        <Button onClick={() => handleDeleteStudent(student.id)} size="sm" variant="destructive">
-                          Delete
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
+<Card className="bg-slate-800 border-slate-700">
+  <CardHeader>
+    <CardTitle className="text-white text-xl">Manage Students</CardTitle>
+    <CardDescription className="text-slate-400">
+      View and manage all student users.
+    </CardDescription>
+  </CardHeader>
+
+  <CardContent>
+    {loadingStudents ? (
+      <p className="text-slate-400">Loading students...</p>
+    ) : students.length === 0 ? (
+      <p className="text-slate-400">No students found.</p>
+    ) : (
+      <div className="space-y-3">
+        {students.map((student) => (
+          <div
+            key={student.id}
+            className="flex items-center justify-between bg-slate-700 p-3 rounded-xl"
+          >
+            <div>
+              <p className="text-white font-semibold">{student.name}</p>
+              <p className="text-slate-400 text-sm">{student.email}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    )}
+  </CardContent>
+</Card>
+
             </div>
           </div>
         </MainLayout>
@@ -1826,7 +1993,7 @@ export default function VirtualClassroomApp() {
         </MainLayout>
       )
     }
-
+  
     if (currentPage === "timetable") {
       const dayOrder = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
       const groupedByDay = dayOrder.reduce(
