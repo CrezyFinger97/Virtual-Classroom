@@ -490,56 +490,95 @@ const handleSignup = async () => {
     setNewStudentPassword("")
   }
 
-  const handleUpdateMarks = () => {
-    if (!updateMarksForm.studentId) {
-      alert("Please select a student")
-      return
-    }
-
-    setStudents(
-      students.map((s) =>
-        s.id === updateMarksForm.studentId
-          ? {
-              ...s,
-              marks: {
-                ...s.marks,
-                [updateMarksForm.subject]: updateMarksForm.marks,
-              },
-            }
-          : s,
-      ),
-    )
-
-    alert("Marks updated successfully!")
-    setUpdateMarksForm({ studentId: "", subject: "Maths", marks: 0 })
+const handleUpdateMarks = async () => {
+  if (!updateMarksForm.studentId) {
+    alert("Please select a student");
+    return;
   }
 
-  const handleUpdateAttendance = () => {
-    if (!updateAttendanceForm.studentId) {
-      alert("Please select a student")
-      return
-    }
+  const updatedStudents = students.map((s) =>
+    s.id === updateMarksForm.studentId
+      ? {
+          ...s,
+          marks: {
+            ...s.marks,
+            [updateMarksForm.subject]: updateMarksForm.marks,
+          },
+        }
+      : s
+  );
 
-    setStudents(
-      students.map((s) =>
-        s.id === updateAttendanceForm.studentId
-          ? {
-              ...s,
-              attendance: {
-                ...s.attendance,
-                [updateAttendanceForm.subject]: {
-                  attended: updateAttendanceForm.attended,
-                  total: updateAttendanceForm.total,
-                },
-              },
-            }
-          : s,
-      ),
-    )
+  setStudents(updatedStudents);
 
-    alert("Attendance updated successfully!")
-    setUpdateAttendanceForm({ studentId: "", subject: "Maths", attended: 0, total: 0 })
+  // ✅ Update in Supabase
+  const studentToUpdate = updatedStudents.find(
+    (s) => s.id === updateMarksForm.studentId
+  );
+
+  const { error } = await supabase
+    .from("students")
+    .update({ marks: studentToUpdate?.marks })
+    .eq("id", updateMarksForm.studentId);
+
+  if (error) {
+    console.error("❌ Error updating marks:", error);
+    alert("Failed to update marks in database.");
+  } else {
+    alert("✅ Marks updated successfully!");
   }
+
+  setUpdateMarksForm({ studentId: "", subject: "Maths", marks: 0 });
+};
+
+
+  const handleUpdateAttendance = async () => {
+  if (!updateAttendanceForm.studentId) {
+    alert("Please select a student");
+    return;
+  }
+
+  const updatedStudents = students.map((s) =>
+    s.id === updateAttendanceForm.studentId
+      ? {
+          ...s,
+          attendance: {
+            ...s.attendance,
+            [updateAttendanceForm.subject]: {
+              attended: updateAttendanceForm.attended,
+              total: updateAttendanceForm.total,
+            },
+          },
+        }
+      : s
+  );
+
+  setStudents(updatedStudents);
+
+  // ✅ Update in Supabase
+  const studentToUpdate = updatedStudents.find(
+    (s) => s.id === updateAttendanceForm.studentId
+  );
+
+  const { error } = await supabase
+    .from("students")
+    .update({ attendance: studentToUpdate?.attendance })
+    .eq("id", updateAttendanceForm.studentId);
+
+  if (error) {
+    console.error("❌ Error updating attendance:", error);
+    alert("Failed to update attendance in database.");
+  } else {
+    alert("✅ Attendance updated successfully!");
+  }
+
+  setUpdateAttendanceForm({
+    studentId: "",
+    subject: "Maths",
+    attended: 0,
+    total: 0,
+  });
+};
+
 
   const handleDeleteStudent = (studentId: string) => {
     if (confirm("Are you sure you want to delete this student?")) {
